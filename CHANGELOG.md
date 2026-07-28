@@ -1,5 +1,30 @@
 # aicodeman
 
+## 1.9.0
+
+### Minor Changes
+
+- 2667150: feat(mobile): browse and insert local file and folder paths
+
+  Add a root-confined filesystem picker to Link Existing and the extended mobile
+  keyboard bar. Selected paths remain editable at the active prompt, supported
+  images/documents/text files open in a safe inline preview, and a new one-tap
+  action clears only the current unsent input without invoking `/clear`.
+
+### Patch Changes
+
+- 3cff98f: Fix two multi-user scoping holes in the new filesystem path picker. `GET /api/filesystem/browse` and `GET /api/filesystem/preview` accept an optional `sessionId` that contributes the session's working directory as a browse root, but they resolved it straight off the session map without an ownership check, unlike the nine other session-scoped handlers in the same route file. A non-admin could therefore pin another user's working directory as a root simply by passing their session id, then list and preview files under it. Both endpoints now run `canAccessOwned` and report 404, which also avoids confirming that a session id exists.
+
+  Separately, `Home` and `CASES_DIR` were unconditional browse roots for every caller. Per-user spaces live at `<USER_SPACES_DIR>/<username>`, which is inside `homedir()`, so the `Home` root alone exposed every other user's workspace to any authenticated user. In multi-user mode a non-admin now gets only their own space plus anything explicitly listed in `CODEMAN_FILE_PICKER_ROOTS`; `/mnt/d` is no longer offered by default, since a broad host mount should be an explicit operator decision in a multi-user deployment. Admins keep the host-wide roots, and single-user mode is unchanged.
+
+  Both holes are regression-guarded in `test/routes/file-routes.test.ts`, verified to fail against the previous code. Multi-user mode is opt-in and off by default, so single-user installs were never affected.
+
+- bca56b4: Normalize Claude conversations in the response viewer. A Claude transcript is an append-only event log, so one logical exchange spans many JSONL rows: tool-result rows, meta/image/skill rows, compact summaries, task and team notifications, sidechains, replayed assistant snapshots, and multi-block assistant output. The viewer rendered a card per row, which produced duplicate and truncated cards that read as lost responses. Cards are now built at real human-turn boundaries, replayed assistant snapshots are deduplicated, and sidechain rows (which belong to subagents, not the main conversation) no longer leak in. An identical prompt that legitimately recurs after an assistant reply is still kept as its own turn.
+
+  Measured over 40 real transcripts: 3108 cards became 621, duplicate cards dropped from 74 to 8 (all of them genuinely repeated turns), no assistant text was lost, and the non-`context=full` last-response text was byte-identical on every file.
+
+  Also rebinds recovered sessions to their transcript. `reconcileSessions()` can recover a lost mux session as a `restored-<uuid8>` placeholder with a stale working directory, which made transcript lookup by cwd find nothing. The placeholder still carries the first eight characters of the conversation UUID, so the viewer now rebinds to the matching top-level transcript when exactly one candidate matches.
+
 ## 1.8.3
 
 ### Patch Changes
